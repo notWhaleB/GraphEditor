@@ -18,10 +18,11 @@ const CacheLabels = {
   L1Chunk: (pos, chunkId) => `c:${pos}:${chunkId}`,
   L2Chunk: (pos, chunkId) => `d:${pos}:${chunkId}`,
   L2TempBuffer: (pos) => `e:${pos}`,
+  VisibleObjects: () => 'f',
 };
 
-const CHUNK_SZ = 500;
-const L2_BUF_SZ = 30000;
+const CHUNK_SZ = 640;
+const L2_BUF_SZ = 30001;
 const L1_BUF_SZ = L2_BUF_SZ * 7;
 
 if (L1_BUF_SZ % L2_BUF_SZ !== 0) {

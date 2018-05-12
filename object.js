@@ -14,11 +14,17 @@ class Object {
     throw new Error('Invalid object');
   }
 
-  constructor(type, color, params, idx, nInitialRegions=4) {
+  constructor(
+    type, color, params,
+    childrenIdx, idx, nInitialRegions=4,
+  ) {
     this.type = type;
     this.color = color;
     this.params = params;
     this.idx = idx;
+    this.childrenIdx = childrenIdx;
+    this.incoming = [];
+    this.outgoing = [];
     this.regions = new Int16Array(nInitialRegions);
   }
 
@@ -72,16 +78,27 @@ class Object {
       const coords = this.getCoords();
       this.clearRegions();
 
-      const points = Util.cartesianProduct(
-        [_.max([coords.x0, 0]), coords.x1],
-        [_.max([coords.y0, 0]), coords.y1],
-      );
+      const points = [
+        [_.max([coords.x0, 0]), _.max([coords.y0, 0])],
+        [_.max([coords.x0, 0]), coords.y1],
+        [coords.x1, _.max([coords.y0, 0])],
+        [coords.x1, coords.y1],
+      ];
 
       _.forEach(points, ([x, y]) => {
         this.addToChunk(
           Scene.coordsToChunkId(x, y),
         );
       });
+    }
+  }
+
+  getCenter() {
+    if (this.type === DrawObject.RECTANGLE) {
+      return {
+        x: this.params[0] + this.params[2] / 2,
+        y: this.params[1] + this.params[3] / 2,
+      }
     }
   }
 }

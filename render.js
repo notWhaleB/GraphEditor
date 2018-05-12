@@ -11,7 +11,12 @@ class Render {
 
   constructor(scene) {
     this.scene = scene;
-    this.ctx = this.scene.canvas.getContext('2d');
+    this.ctx = this.scene.canvas.getContext('2d', { alpha: false });
+
+    this.ctx.imageSmoothingEnabled = false;       /* standard */
+    this.ctx.oImageSmoothingEnabled = false;      /* Opera */
+    this.ctx.webkitImageSmoothingEnabled = false; /* Safari */
+    this.ctx.msImageSmoothingEnabled = false;     /* IE */
 
     this.lru = new LRUCache();
 
@@ -21,6 +26,27 @@ class Render {
       null,
       null,
     ];
+  }
+
+  drawObjectConnections(ctx, obj) {
+    const bufInfo = this.getBufferInfo();
+    const fromCenter = obj.getCenter();
+
+    const drawConnection = (obj) => {
+      const toCenter = obj.getCenter();
+      ctx.translate(
+        0 - bufInfo.x0,
+        0 - bufInfo.y0,
+      );
+      ctx.beginPath();
+      ctx.moveTo(fromCenter.x, fromCenter.y);
+      ctx.lineTo(toCenter.x, toCenter.y);
+      ctx.stroke();
+      ctx.translate(bufInfo.x0, bufInfo.y0);
+    };
+
+    _.forEach(obj.incoming, drawConnection);
+    _.forEach(obj.outgoing, drawConnection);
   }
 
   drawRectangle(ctx, rectObj) {
@@ -61,7 +87,7 @@ class Render {
     return buffer;
   }
 
-  *getVisibleObjects(pos, lastBlockPos=null, cacheCheck=true) {
+  getVisibleObjects(pos, lastBlockPos=null, cacheCheck=true) {
     let mxRegionId = 0;
     const toRender = [];
 
@@ -91,17 +117,21 @@ class Render {
 
     const lastPos = _.min([lastBlockPos || (pos + L2_BUF_SZ), this.scene.objects.length]);
 
+    const objects = [];
+
     for (let zIdx = pos; zIdx < lastPos; ++zIdx) {
       const obj = this.scene.objects[zIdx];
       const minLength = _.min([bitMask.length, obj.regions.length]);
 
       for (let i = 0; i !== minLength; ++i) {
         if ((bitMask[i] & obj.regions[i]) !== 0) {
-          yield obj;
+          objects.push(obj);
           break;
         }
       }
     }
+
+    return objects;
   }
 
   getL2TempBuffer(pos) {
@@ -110,9 +140,9 @@ class Render {
       const buf = Render.createBuffer(bufInfo.width, bufInfo.height);
       const ctx = buf.getContext('2d');
 
-      for (let obj of this.getVisibleObjects(pos)) {
+      _.forEach(this.getVisibleObjects(pos), obj => {
         this.renderObject(ctx, obj);
-      }
+      });
 
       //console.log(Array.from(this.scene.camera.visibleChunks.keys()), bitMask);
       //console.log(count);
@@ -133,10 +163,10 @@ class Render {
       const bufInfo = this.getBufferInfo();
       const { x, y } = this.scene.camera.visibleChunks.get(chunkId);
 
-      if (pos === 0) {
-        ctx.fillStyle = `rgb(${_.random(220, 255)}, ${_.random(220, 255)}, ${_.random(220, 255)})`;
-        ctx.fillRect(0, 0, CHUNK_SZ, CHUNK_SZ);
-      }
+      // if (pos === 0) {
+      //   ctx.fillStyle = `rgb(${_.random(220, 255)}, ${_.random(220, 255)}, ${_.random(220, 255)})`;
+      //   ctx.fillRect(0, 0, CHUNK_SZ, CHUNK_SZ);
+      // }
 
       ctx.drawImage(
         this.getL2TempBuffer(pos),
@@ -194,6 +224,51 @@ class Render {
     return this._getCached(CacheLabels.L1Buffer(pos), refresh);
   }
 
+  drawConnections(ctx, movingObjId=-1) {
+    const objects = this._getCached(
+      CacheLabels.VisibleObjects(),
+      () => {
+        return this.getVisibleObjects(0, this.scene.objects.length, false);
+      },
+    );
+
+    for (let obj of objects) {
+      if (obj.idx === movingObjId) return;
+
+      this.drawObjectConnections(ctx, obj);
+    }
+  }
+
+  // getConnectionsBuffer(movingObjId=-1) {
+  //   const refresh = () => {
+  //     const bufInfo = this.getBufferInfo();
+  //     const buf = Render.createBuffer(bufInfo.width, bufInfo.height);
+  //     const ctx = buf.getContext('2d');
+  //
+  //     this.drawConnections(ctx, movingObjId);
+  //
+  //     return buf;
+  //   };
+  //
+  //   return this._getCached(CacheLabels.ConnectionsBuffer(), refresh);
+  // }
+
+  redrawL1Buffers() {
+    const lastBlockPos = (
+      this.scene.objects.length - this.scene.objects.length % L1_BUF_SZ
+    );
+
+    for (let pos = 0; pos <= lastBlockPos; pos += L1_BUF_SZ) {
+      this.lru.invalidate(CacheLabels.L1Buffer(pos));
+      this.lru.get(CacheLabels.L1Buffer(pos));
+    }
+
+    this.lru.invalidate(CacheLabels.VisibleObjects());
+    this.lru.invalidate(CacheLabels.FullBuffer());
+
+    this.renderScene();
+  };
+
   getFullBuffer() {
     const refresh = () => {
       const bufInfo = this.getBufferInfo();
@@ -216,15 +291,27 @@ class Render {
 
   renderScene() {
     const bufInfo = this.getBufferInfo();
-    this.ctx.fillStyle = 'rgb(255, 255, 255)';
+    this.ctx.fillStyle = 'rgb(251, 251, 255)';
     this.ctx.fillRect(0, 0, this.scene.canvas.width, this.scene.canvas.height);
-    //this.ctx.scale(2, 2);
+
+    this.ctx.scale(
+      this.scene.camera.scale,
+      this.scene.camera.scale,
+    );
+    this.ctx.translate(
+      this.scene.camera.x + bufInfo.x0,
+      this.scene.camera.y + bufInfo.y0,
+    );
+    this.drawConnections(this.ctx);
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    this.ctx.scale(this.scene.camera.scale, this.scene.camera.scale);
     this.ctx.drawImage(
       this.getFullBuffer(),
       this.scene.camera.x + bufInfo.x0,
       this.scene.camera.y + bufInfo.y0,
     );
-    //this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 }
 

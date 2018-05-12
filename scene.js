@@ -60,23 +60,25 @@ class Scene {
     this.canvas.addEventListener('mousedown', ev => {
       const click = getMouseEventInfo(ev);
 
-      if (moveState.mode === ToolMode.MOVE) {
-        let clickedObjId = this.getHoveredObjectIndex(
-          click.x - this.camera.x,
-          click.y - this.camera.y,
-        );
+      const clickX = click.x / this.camera.scale;
+      const clickY = click.y / this.camera.scale;
 
-        if (!clickedObjId) return;
+      let clickedObjId = this.getHoveredObjectIndex(
+        clickX - this.camera.x,
+        clickY - this.camera.y,
+      );
 
+      if (clickedObjId > 0) {
+        moveState.mode = ToolMode.MOVE;
         moveState.moving = true;
         moveState.objId = clickedObjId;
-        moveState.lastX = click.x;
-        moveState.lastY = click.y;
-
-      } else if (moveState.mode === ToolMode.VIEW) {
+        moveState.lastX = clickX;
+        moveState.lastY = clickY;
+      } else {
+        moveState.mode = ToolMode.VIEW;
         moveState.moving = true;
-        moveState.lastX = click.x;
-        moveState.lastY = click.y;
+        moveState.lastX = clickX;
+        moveState.lastY = clickY;
       }
     });
 
@@ -86,78 +88,106 @@ class Scene {
       this.build2DIndex();
     });
 
-    this.canvas.addEventListener('mousemove', ev => {
-      if (!moveState.moving) return;
+    const invalidateL1BuffersIfVisibleChanged = () => {
+      const visible = new Set([...this.camera.visibleChunks.keys()]);
 
+      if (moveState.lastVisibleChunks.size !== visible.size) {
+        moveState.lastVisibleChunks = visible;
+        this.render.redrawL1Buffers();
+      } else {
+        const union = new Set([
+          ...moveState.lastVisibleChunks,
+          ...visible,
+        ]);
+
+        if (moveState.lastVisibleChunks.size !== union.size) {
+          moveState.lastVisibleChunks = visible;
+          this.render.redrawL1Buffers();
+        }
+      }
+    };
+
+    this.canvas.addEventListener('wheel', ev => {
       const mouse = getMouseEventInfo(ev);
+
+      const delta = 0 - ev.deltaY / 1500;
+
+      if (this.camera.scale + delta < 0.5) return;
+
+      const newCamX = this.camera.x - (
+        1 / this.camera.scale - 1 / (this.camera.scale + delta)
+      ) * mouse.x;
+      const newCamY = this.camera.y - (
+        1 / this.camera.scale - 1 / (this.camera.scale + delta)
+      ) * mouse.y;
+
+      this.camera.scale += delta;
+
+      this.camera.set(newCamX, newCamY);
+
+      this.camera._setVisibleChunks();
+
+     // this.render.lru.invalidate(CacheLabels.FullBuffer());
+
+      this.render.renderScene();
+
+      invalidateL1BuffersIfVisibleChanged();
+    });
+
+    this.canvas.addEventListener('mousemove', ev => {
+      const mouse = getMouseEventInfo(ev);
+
+      const mouseX = mouse.x / this.camera.scale;
+      const mouseY = mouse.y / this.camera.scale;
+
+      let clickedObjId = this.getHoveredObjectIndex(
+        mouseX - this.camera.x,
+        mouseY - this.camera.y,
+      );
+
+      if (clickedObjId > 0) {
+        this.canvas.style.cursor = 'pointer';
+      } else {
+        this.canvas.style.cursor = 'move';
+      }
+
+      if (!moveState.moving) return;
 
       if (moveState.mode === ToolMode.MOVE) {
         const obj = this.objects[moveState.objId];
 
-        obj.params[0] += mouse.x - moveState.lastX;
-        obj.params[1] += mouse.y - moveState.lastY;
+        obj.params[0] += mouseX - moveState.lastX;
+        obj.params[1] += mouseY - moveState.lastY;
 
-        moveState.lastX = mouse.x;
-        moveState.lastY = mouse.y;
+        moveState.lastX = mouseX;
+        moveState.lastY = mouseY;
 
         markObjectForUpdate(moveState.objId);
         obj.setRegions();
       } else if (moveState.mode === ToolMode.VIEW) {
         this.camera.set(
-          this.camera.x + mouse.x - moveState.lastX,
-          this.camera.y + mouse.y - moveState.lastY,
+          this.camera.x + mouseX - moveState.lastX,
+          this.camera.y + mouseY - moveState.lastY,
         );
 
-        moveState.lastX = mouse.x;
-        moveState.lastY = mouse.y;
+        moveState.lastX = mouseX;
+        moveState.lastY = mouseY;
 
-        let redraw = (newVisibleChunks) => {
-          moveState.lastVisibleChunks = newVisibleChunks;
-
-          //console.log('MISS', Math.random());
-
-          const lastBlockPos = (
-            this.objects.length - this.objects.length % L1_BUF_SZ
-          );
-
-          for (let pos = 0; pos <= lastBlockPos; pos += L1_BUF_SZ) {
-            this.render.lru.invalidate(CacheLabels.L1Buffer(pos));
-            this.render.lru.get(CacheLabels.L1Buffer(pos));
-          }
-
-          this.render.lru.invalidate(CacheLabels.FullBuffer());
-
-          this.render.renderScene();
-        };
-
-        const visible = new Set([...this.camera.visibleChunks.keys()]);
-
-        if (moveState.lastVisibleChunks.size !== visible.size) {
-          redraw(visible);
-        } else {
-          const union = new Set([
-            ...moveState.lastVisibleChunks,
-            ...visible,
-          ]);
-
-          if (moveState.lastVisibleChunks.size !== union.size) {
-            redraw(visible);
-          }
-        }
+        invalidateL1BuffersIfVisibleChanged();
       }
 
       this.render.renderScene();
     });
 
-    document.getElementById('btn-view')
-      .addEventListener('click', () => {
-        moveState.mode = ToolMode.VIEW;
-      });
-
-    document.getElementById('btn-move')
-      .addEventListener('click', () => {
-        moveState.mode = ToolMode.MOVE;
-      })
+    // document.getElementById('btn-view')
+    //   .addEventListener('click', () => {
+    //     moveState.mode = ToolMode.VIEW;
+    //   });
+    //
+    // document.getElementById('btn-move')
+    //   .addEventListener('click', () => {
+    //     moveState.mode = ToolMode.MOVE;
+    //   })
   }
 
   static findChunk(xIdx, yIdx) {
@@ -197,6 +227,10 @@ class Scene {
     const xIdx = _.sortedLastIndex(this.ticksX, x) - 1;
     const yIdx = _.sortedLastIndex(this.ticksY, y) - 1;
 
+    if (!this.grid[xIdx] || !this.grid[xIdx][yIdx]) {
+      return -1;
+    }
+
     return this.grid[xIdx][yIdx];
   }
 
@@ -213,8 +247,11 @@ class Scene {
     //   };
     // };
 
-    const objects = Array.from(
-      this.render.getVisibleObjects(0, this.objects.length, false),
+    const objects = this.render._getCached(
+      CacheLabels.VisibleObjects(),
+      () => {
+        return this.render.getVisibleObjects(0, this.objects.length, false);
+      },
     );
 
     for (let obj of objects) {
@@ -266,6 +303,7 @@ class Scene {
       obj.type,
       obj.color,
       obj.params,
+      obj.children,
       this.objects.length,
     );
     obj_.setRegions();
@@ -273,6 +311,22 @@ class Scene {
     this.objects.push(obj_);
 
     return obj_;
+  }
+
+  initConnections() {
+    _.forEach(this.objects, obj => {
+      _.forEach(
+        obj.childrenIdx,
+        idx => {
+          obj.outgoing.push(this.objects[idx]);
+          this.objects[idx].incoming.push(
+            this.objects[obj.idx]
+          );
+        },
+      );
+
+      delete obj.childrenIdx;
+    });
   }
 
   // renderBuffer(checkComposite) {
@@ -320,11 +374,29 @@ for (let i = 0; i !== 500000; ++i) {
     type: DrawObject.RECTANGLE,
     color: randColor(),
     params: [
-      _.random(50, 10000), _.random(50, 10000),
-      _.random(20, 25), _.random(20, 25),
+      _.random(5, 10000), _.random(5, 10000),
+      _.random(5, 10), _.random(5, 10),
     ],
+    children: _.map(
+      _.range(_.random(0, 10) > 9),
+      () => _.random(0, 99999),
+    ),
   };
 }
+// for (let i = 100000; i !== 100100; ++i) {
+//   objects[i] = {
+//     type: DrawObject.RECTANGLE,
+//     color: randColor(),
+//     params: [
+//       _.random(50, 10000), _.random(50, 10000),
+//       _.random(50, 100), _.random(50, 100),
+//     ],
+//     children: _.map(
+//       _.range(_.random(0, 1)),
+//       () => _.random(100000, 100100),
+//     ),
+//   };
+// }
 
 // const objects = [];
 // for (let i = 256; i < 5000; i += 512) {
@@ -358,6 +430,7 @@ for (let i = 0; i !== 500000; ++i) {
 _.forEach(objects, obj => {
   scene.addObject(obj);
 });
+scene.initConnections();
 
 scene.camera.set(0, 0);
 

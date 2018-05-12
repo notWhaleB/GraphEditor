@@ -62,7 +62,7 @@ class LinkedList {
 }
 
 class LRUCache extends LinkedList {
-  constructor(limit=4096) {
+  constructor(limit=2048) {
     super();
 
     this._map = new Map();
@@ -79,6 +79,14 @@ class LRUCache extends LinkedList {
   _remove(elem) {
     this._map.delete(elem.key);
     delete this.discard(elem);
+
+    if (this._front === undefined) {
+      this._front = null;
+    }
+
+    if (this._back === undefined) {
+      this._back = null;
+    }
   };
 
   get(key) {

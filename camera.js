@@ -5,6 +5,7 @@ class Camera {
     this.canvas = canvas;
     this.x = 0;
     this.y = 0;
+    this.scale = 2.0;
     this.visibleChunks = new Map();
   }
 
@@ -12,9 +13,9 @@ class Camera {
     return _.map(
       [
         0 - this.x,
-        this.canvas.width - this.x,
+        this.canvas.width / this.scale - this.x,
         0 - this.y,
-        this.canvas.height - this.y,
+        this.canvas.height / this.scale - this.y,
       ],
       val => {
         return val - val % CHUNK_SZ;
