@@ -19,13 +19,6 @@ class Render {
     this.ctx.msImageSmoothingEnabled = false;     /* IE */
 
     this.lru = new LRUCache();
-
-    this.objTypeToRenderer = [
-      null,
-      (...args) => this.drawRectangle(...args),
-      null,
-      null,
-    ];
   }
 
   drawObjectConnections(ctx, obj) {
@@ -49,20 +42,17 @@ class Render {
     _.forEach(obj.outgoing, drawConnection);
   }
 
-  drawRectangle(ctx, rectObj) {
+  renderObject(ctx, obj) {
     const bufInfo = this.getBufferInfo();
 
-    ctx.fillStyle = rectObj.color;
     ctx.translate(
       0 - bufInfo.x0,
       0 - bufInfo.y0,
     );
-    ctx.fillRect(...rectObj.params);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-  };
 
-  renderObject(ctx, obj) {
-    return this.objTypeToRenderer[obj.type](ctx, obj);
+    obj.draw(ctx);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   };
 
   getBufferInfo() {
@@ -82,6 +72,7 @@ class Render {
     }
 
     const buffer = func(...args);
+
     this.lru.set(key, buffer);
 
     return buffer;
@@ -311,6 +302,63 @@ class Render {
       this.scene.camera.x + bufInfo.x0,
       this.scene.camera.y + bufInfo.y0,
     );
+    this.ctx.translate(
+      this.scene.camera.x,
+      this.scene.camera.y,
+    );
+    if (this.scene.hoveredObjectIdx > 0) {
+      const bounds = this.scene.objects[this.scene.hoveredObjectIdx].getBounds();
+
+      const drawFrame = () => {
+        this.ctx.beginPath();
+        this.ctx.moveTo(bounds.x0, bounds.y0);
+        this.ctx.lineTo(bounds.x0, bounds.y1);
+        this.ctx.lineTo(bounds.x1, bounds.y1);
+        this.ctx.lineTo(bounds.x1, bounds.y0);
+        this.ctx.lineTo(bounds.x0, bounds.y0);
+        this.ctx.stroke();
+      };
+
+      this.ctx.strokeStyle = 'white';
+      drawFrame();
+      this.ctx.strokeStyle = 'black';
+      this.ctx.setLineDash([1, 1]);
+      drawFrame();
+      this.ctx.setLineDash([]);
+    }
+
+    const objects = this._getCached(
+      CacheLabels.VisibleObjects(),
+      () => {
+        return this.getVisibleObjects(0, this.scene.objects.length, false);
+      },
+    );
+
+    this.ctx.scale(
+      1 / this.scene.camera.scale,
+      1 / this.scene.camera.scale,
+    );
+
+    _.forEach(objects, obj => {
+      if (!obj.label) return;
+
+      this.ctx.font = `${TEXT_LINE_HEIGHT}px sans-serif`;
+      const textWidth = this.ctx.measureText(obj.label).width;
+      const center = obj.getCenter();
+      const [text, cx, cy] = [
+        obj.label,
+        center.x * this.scene.camera.scale - textWidth / 2,
+        center.y * this.scene.camera.scale,
+      ];
+
+      this.ctx.fillStyle = 'rgb(255, 255, 255)';
+      this.ctx.fillText(text, cx, cy);
+      this.ctx.fillStyle = 'rgb(0, 0, 0)';
+      this.ctx.lineWidth = 2;
+      this.ctx.strokeText(text, cx, cy);
+      this.ctx.lineWidth = 1;
+    });
+
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 }

@@ -13,6 +13,9 @@ class Scene {
     // };
 
     this.objects = [];
+    this.grid = [];
+
+    this.hoveredObjectIdx = 0;
 
     // this.addObject(bgObject);
     // this.build2DIndex();
@@ -26,7 +29,7 @@ class Scene {
       };
     };
 
-    let moveState = {
+    this.moveState = {
       mode: ToolMode.VIEW,
       lastVisibleChunks: new Set(),
       moving: false,
@@ -69,21 +72,21 @@ class Scene {
       );
 
       if (clickedObjId > 0) {
-        moveState.mode = ToolMode.MOVE;
-        moveState.moving = true;
-        moveState.objId = clickedObjId;
-        moveState.lastX = clickX;
-        moveState.lastY = clickY;
+        this.moveState.mode = ToolMode.MOVE;
+        this.moveState.moving = true;
+        this.moveState.objId = clickedObjId;
+        this.moveState.lastX = clickX;
+        this.moveState.lastY = clickY;
       } else {
-        moveState.mode = ToolMode.VIEW;
-        moveState.moving = true;
-        moveState.lastX = clickX;
-        moveState.lastY = clickY;
+        this.moveState.mode = ToolMode.VIEW;
+        this.moveState.moving = true;
+        this.moveState.lastX = clickX;
+        this.moveState.lastY = clickY;
       }
     });
 
     this.canvas.addEventListener('mouseup', () => {
-      moveState.moving = false;
+      this.moveState.moving = false;
 
       this.build2DIndex();
     });
@@ -91,17 +94,17 @@ class Scene {
     const invalidateL1BuffersIfVisibleChanged = () => {
       const visible = new Set([...this.camera.visibleChunks.keys()]);
 
-      if (moveState.lastVisibleChunks.size !== visible.size) {
-        moveState.lastVisibleChunks = visible;
+      if (this.moveState.lastVisibleChunks.size !== visible.size) {
+        this.moveState.lastVisibleChunks = visible;
         this.render.redrawL1Buffers();
       } else {
         const union = new Set([
-          ...moveState.lastVisibleChunks,
+          ...this.moveState.lastVisibleChunks,
           ...visible,
         ]);
 
-        if (moveState.lastVisibleChunks.size !== union.size) {
-          moveState.lastVisibleChunks = visible;
+        if (this.moveState.lastVisibleChunks.size !== union.size) {
+          this.moveState.lastVisibleChunks = visible;
           this.render.redrawL1Buffers();
         }
       }
@@ -140,38 +143,43 @@ class Scene {
       const mouseX = mouse.x / this.camera.scale;
       const mouseY = mouse.y / this.camera.scale;
 
-      let clickedObjId = this.getHoveredObjectIndex(
-        mouseX - this.camera.x,
-        mouseY - this.camera.y,
-      );
-
-      if (clickedObjId > 0) {
-        this.canvas.style.cursor = 'pointer';
-      } else {
-        this.canvas.style.cursor = 'move';
-      }
-
-      if (!moveState.moving) return;
-
-      if (moveState.mode === ToolMode.MOVE) {
-        const obj = this.objects[moveState.objId];
-
-        obj.params[0] += mouseX - moveState.lastX;
-        obj.params[1] += mouseY - moveState.lastY;
-
-        moveState.lastX = mouseX;
-        moveState.lastY = mouseY;
-
-        markObjectForUpdate(moveState.objId);
-        obj.setRegions();
-      } else if (moveState.mode === ToolMode.VIEW) {
-        this.camera.set(
-          this.camera.x + mouseX - moveState.lastX,
-          this.camera.y + mouseY - moveState.lastY,
+      if (!this.moveState.moving) {
+        this.hoveredObjectIdx = this.getHoveredObjectIndex(
+          mouseX - this.camera.x,
+          mouseY - this.camera.y,
         );
 
-        moveState.lastX = mouseX;
-        moveState.lastY = mouseY;
+        if (this.hoveredObjectIdx > 0) {
+          this.canvas.style.cursor = 'pointer';
+        } else {
+          this.canvas.style.cursor = 'move';
+        }
+
+        this.render.renderScene();
+        return;
+      }
+
+      if (this.moveState.mode === ToolMode.MOVE) {
+        const obj = this.objects[this.moveState.objId];
+
+        obj.moveDelta(
+          mouseX - this.moveState.lastX,
+          mouseY - this.moveState.lastY,
+        );
+
+        this.moveState.lastX = mouseX;
+        this.moveState.lastY = mouseY;
+
+        markObjectForUpdate(this.moveState.objId);
+        obj.setRegions();
+      } else if (this.moveState.mode === ToolMode.VIEW) {
+        this.camera.set(
+          this.camera.x + mouseX - this.moveState.lastX,
+          this.camera.y + mouseY - this.moveState.lastY,
+        );
+
+        this.moveState.lastX = mouseX;
+        this.moveState.lastY = mouseY;
 
         invalidateL1BuffersIfVisibleChanged();
       }
@@ -255,9 +263,7 @@ class Scene {
     );
 
     for (let obj of objects) {
-      if (obj.type !== DrawObject.RECTANGLE) return; // TODO
-
-      let coords = obj.getCoords();
+      let coords = obj.getBounds();
 
       this.ticksX.push(coords.x0, coords.x1);
       this.ticksY.push(coords.y0, coords.y1);
@@ -278,9 +284,7 @@ class Scene {
     _.forEach(
       objects,
       obj => {
-        if (obj.type !== DrawObject.RECTANGLE) return; // TODO
-
-        const coords = obj.getCoords();
+        const coords = obj.getBounds();
 
         const gridIndices = {
           x0: _.sortedIndexOf(this.ticksX, coords.x0),
@@ -299,9 +303,20 @@ class Scene {
   }
 
   addObject(obj) {
-    const obj_ = new Object(
+    let ObjectClass = Object;
+    if (obj.type === DrawObject.RECTANGLE) {
+      ObjectClass = Rectangle;
+    } else if (obj.type === DrawObject.TRIANGLE) {
+      ObjectClass = Triangle;
+    } else if (obj.type === DrawObject.CIRCLE) {
+      ObjectClass = Circle;
+    }
+
+    const obj_ = new ObjectClass(
       obj.type,
       obj.color,
+      obj.meta,
+      obj.label,
       obj.params,
       obj.children,
       this.objects.length,
@@ -368,20 +383,55 @@ let randColor = () => {
   return `rgb(${_.random(32, 255)}, ${_.random(32, 255)}, ${_.random(32, 255)})`;
 };
 
-const objects = new Array(500000);
-for (let i = 0; i !== 500000; ++i) {
-  objects[i] = {
-    type: DrawObject.RECTANGLE,
-    color: randColor(),
-    params: [
-      _.random(5, 10000), _.random(5, 10000),
-      _.random(5, 10), _.random(5, 10),
-    ],
-    children: _.map(
-      _.range(_.random(0, 10) > 9),
-      () => _.random(0, 99999),
-    ),
-  };
+const objects = new Array(800000);
+for (let i = 0; i !== 800000; ++i) {
+  switch (_.random(0, 2)) {
+    case 0: {
+      objects[i] = {
+        type: DrawObject.RECTANGLE,
+        color: randColor(),
+        params: [
+          _.random(5, 20000), _.random(5, 20000),
+          _.random(5, 25), _.random(5, 25),
+        ],
+        children: _.map(
+          _.range(_.random(0, 10) > 9),
+          () => _.random(0, 99999),
+        ),
+      };
+    } break;
+    case 1: {
+      const [sx, sy] = [_.random(5, 20000), _.random(5, 20000)];
+
+      objects[i] = {
+        type: DrawObject.TRIANGLE,
+        color: randColor(),
+        params: [
+          sx, sy,
+          sx + 10, sy - 18,
+          sx + 20, sy,
+        ],
+        children: _.map(
+          _.range(_.random(0, 10) > 9),
+          () => _.random(0, 99999),
+        ),
+        label: _.random(0, 10) > 9 ? 'Label' : '',
+      };
+    } break;
+    case 2: {
+      const [cx, cy] = [];
+
+      objects[i] = {
+        type: DrawObject.CIRCLE,
+        color: randColor(),
+        params: [_.random(5, 20000), _.random(5, 20000), _.random(5, 15)],
+        children: _.map(
+          _.range(_.random(0, 10) > 9),
+          () => _.random(0, 99999),
+        ),
+      };
+    } break;
+  }
 }
 // for (let i = 100000; i !== 100100; ++i) {
 //   objects[i] = {
@@ -438,9 +488,9 @@ setTimeout(() => {
   scene.render.renderScene();
   scene.build2DIndex();
   // console.log(scene.ticksX);
-  console.log(scene.render.lru._map.size);
+  //console.log(scene.render.lru._map.size);
 }, 0);
 
-setInterval(() => {
-  console.log(scene.render.lru._map.size);
-}, 1000);
+// setInterval(() => {
+//   console.log(scene.render.lru._map.size);
+// }, 1000);
