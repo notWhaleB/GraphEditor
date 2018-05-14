@@ -3,6 +3,8 @@
 class Scene {
   constructor(canvasElementId) {
     this.canvas = document.getElementById(canvasElementId);
+    this.canvas.width = this.canvas.parentNode.offsetWidth;
+    this.canvas.height = this.canvas.parentNode.offsetHeight;
 
     this.camera = new Camera(this.canvas);
 
@@ -16,6 +18,7 @@ class Scene {
     this.grid = [];
 
     this.hoveredObjectIdx = 0;
+    this.selectedObjects = new Set();
 
     // this.addObject(bgObject);
     // this.build2DIndex();
@@ -30,20 +33,24 @@ class Scene {
     };
 
     this.moveState = {
-      mode: ToolMode.VIEW,
+      mode: Action.VIEW,
       lastVisibleChunks: new Set(),
       moving: false,
       objId: undefined,
       lastX: undefined,
       lastY: undefined,
+      startX: undefined,
+      startY: undefined,
     };
 
-    const markObjectForUpdate = (objId) => {
+    this.toolMode = ToolMode.VIEWER;
+
+    const markObjectForUpdate = (objIdx) => {
       _.forEach(
-        this.objects[objId].extractChunks(),
+        this.objects[objIdx].extractChunks(),
         chunkId => {
-          const l1Pos = objId - objId % L1_BUF_SZ;
-          const l2Pos = objId - objId % L2_BUF_SZ;
+          const l1Pos = objIdx - objIdx % L1_BUF_SZ;
+          const l2Pos = objIdx - objIdx % L2_BUF_SZ;
 
           const keysToInvalidate = [
             CacheLabels.L2Chunk(l2Pos, chunkId),
@@ -72,22 +79,58 @@ class Scene {
       );
 
       if (clickedObjId > 0) {
-        this.moveState.mode = ToolMode.MOVE;
+        if (!ev.metaKey) {
+          this.selectedObjects.clear();
+        }
+
+        this.moveState.mode = Action.MOVE;
         this.moveState.moving = true;
         this.moveState.objId = clickedObjId;
-        this.moveState.lastX = clickX;
-        this.moveState.lastY = clickY;
       } else {
-        this.moveState.mode = ToolMode.VIEW;
+        this.moveState.mode = Action.VIEW;
         this.moveState.moving = true;
-        this.moveState.lastX = clickX;
-        this.moveState.lastY = clickY;
       }
+      this.moveState.lastX = clickX;
+      this.moveState.lastY = clickY;
+      this.moveState.startX = clickX;
+      this.moveState.startY = clickY;
     });
 
-    this.canvas.addEventListener('mouseup', () => {
+    this.canvas.addEventListener('mouseup', (ev) => {
       this.moveState.moving = false;
 
+      if (this.toolMode === ToolMode.SELECTOR) {
+        if (this.moveState.mode === Action.VIEW) {
+          if (!ev.metaKey) {
+            this.selectedObjects.clear();
+          }
+
+          const [x0, y0, x1, y1] = [
+            _.min([this.moveState.startX, this.moveState.lastX]),
+            _.min([this.moveState.startY, this.moveState.lastY]),
+            _.max([this.moveState.startX, this.moveState.lastX]),
+            _.max([this.moveState.startY, this.moveState.lastY]),
+          ];
+
+          _.forEach(
+            Array.from(
+              this.getSelectedObjects(
+                x0 - this.camera.x,
+                y0 - this.camera.y,
+                x1 - this.camera.x,
+                y1 - this.camera.y,
+              ),
+            ),
+            (objIdx) => {
+              this.selectedObjects.add(objIdx);
+            }
+          );
+        }
+      } else if (this.moveState.objId) {
+        this.selectedObjects.add(this.moveState.objId);
+      }
+
+      this.render.renderScene();
       this.build2DIndex();
     });
 
@@ -110,10 +153,10 @@ class Scene {
       }
     };
 
-    this.canvas.addEventListener('wheel', ev => {
+    const wheelHandler = (acc, ev) => {
       const mouse = getMouseEventInfo(ev);
 
-      const delta = 0 - ev.deltaY / 1500;
+      const delta = 0 - ev.deltaY * acc;
 
       if (this.camera.scale + delta < 0.5) return;
 
@@ -130,11 +173,14 @@ class Scene {
 
       this.camera._setVisibleChunks();
 
-     // this.render.lru.invalidate(CacheLabels.FullBuffer());
-
       this.render.renderScene();
 
       invalidateL1BuffersIfVisibleChanged();
+    };
+
+    this.canvas.addEventListener('wheel', ev => {
+      wheelHandler(0.00005, ev);
+      _.debounce(wheelHandler, 70)(0.01, ev);
     });
 
     this.canvas.addEventListener('mousemove', ev => {
@@ -144,39 +190,60 @@ class Scene {
       const mouseY = mouse.y / this.camera.scale;
 
       if (!this.moveState.moving) {
-        this.hoveredObjectIdx = this.getHoveredObjectIndex(
+
+        const newHoveredObjectIdx = this.getHoveredObjectIndex(
           mouseX - this.camera.x,
           mouseY - this.camera.y,
         );
 
-        if (this.hoveredObjectIdx > 0) {
-          this.canvas.style.cursor = 'pointer';
+        if (newHoveredObjectIdx > 0) {
+          this.canvas.style.cursor = 'grab';
         } else {
-          this.canvas.style.cursor = 'move';
+          this.canvas.style.cursor = (this.toolMode === ToolMode.VIEWER)
+            ? 'move'
+            : 'crosshair';
         }
+
+        if (this.hoveredObjectIdx === newHoveredObjectIdx) {
+          return;
+        }
+        this.hoveredObjectIdx = newHoveredObjectIdx;
 
         this.render.renderScene();
         return;
       }
 
-      if (this.moveState.mode === ToolMode.MOVE) {
-        const obj = this.objects[this.moveState.objId];
+      if (this.moveState.mode === Action.MOVE) {
+        _.forEach(
+          Array.from(new Set(
+            _.concat(
+              Array.from(this.selectedObjects),
+              [this.hoveredObjectIdx],
+            ),
+          )),
+          (objIdx) => {
+            if (objIdx <= 0) return;
 
-        obj.moveDelta(
-          mouseX - this.moveState.lastX,
-          mouseY - this.moveState.lastY,
+            const obj = this.objects[objIdx];
+            obj.moveDelta(
+              mouseX - this.moveState.lastX,
+              mouseY - this.moveState.lastY,
+            );
+
+            markObjectForUpdate(objIdx);
+            obj.setRegions();
+          },
         );
 
         this.moveState.lastX = mouseX;
         this.moveState.lastY = mouseY;
-
-        markObjectForUpdate(this.moveState.objId);
-        obj.setRegions();
-      } else if (this.moveState.mode === ToolMode.VIEW) {
-        this.camera.set(
-          this.camera.x + mouseX - this.moveState.lastX,
-          this.camera.y + mouseY - this.moveState.lastY,
-        );
+      } else if (this.moveState.mode === Action.VIEW) {
+        if (this.toolMode === ToolMode.VIEWER) {
+          this.camera.set(
+            this.camera.x + mouseX - this.moveState.lastX,
+            this.camera.y + mouseY - this.moveState.lastY,
+          );
+        }
 
         this.moveState.lastX = mouseX;
         this.moveState.lastY = mouseY;
@@ -187,15 +254,22 @@ class Scene {
       this.render.renderScene();
     });
 
-    // document.getElementById('btn-view')
-    //   .addEventListener('click', () => {
-    //     moveState.mode = ToolMode.VIEW;
-    //   });
-    //
-    // document.getElementById('btn-move')
-    //   .addEventListener('click', () => {
-    //     moveState.mode = ToolMode.MOVE;
-    //   })
+    const btnSelector = document.getElementById('btn-selector');
+    const btnViewer = document.getElementById('btn-viewer');
+
+    btnSelector
+      .addEventListener('click', () => {
+        this.toolMode = ToolMode.SELECTOR;
+        btnSelector.className = 'btn active';
+        btnViewer.className = 'btn';
+      });
+
+    btnViewer
+      .addEventListener('click', () => {
+        this.toolMode = ToolMode.VIEWER;
+        btnViewer.className = 'btn active';
+        btnSelector.className = 'btn';
+      })
   }
 
   static findChunk(xIdx, yIdx) {
@@ -240,6 +314,27 @@ class Scene {
     }
 
     return this.grid[xIdx][yIdx];
+  }
+
+  getSelectedObjects(x0, y0, x1, y1) {
+    const xIdx0 = _.sortedLastIndex(this.ticksX, x0) - 1;
+    const yIdx0 = _.sortedLastIndex(this.ticksY, y0) - 1;
+    const xIdx1 = _.sortedLastIndex(this.ticksY, x1) - 1;
+    const yIdx1 = _.sortedLastIndex(this.ticksY, y1) - 1;
+
+    const objects = new Set();
+
+    if (!this.grid[xIdx0] || !this.grid[xIdx1]) {
+      return objects;
+    }
+
+    for (let xIdx = xIdx0; xIdx <= xIdx1; ++xIdx) {
+      for (let yIdx = yIdx0; yIdx <= yIdx1; ++yIdx) {
+        objects.add(this.grid[xIdx][yIdx]);
+      }
+    }
+
+    return objects;
   }
 
   build2DIndex() {
@@ -303,7 +398,7 @@ class Scene {
   }
 
   addObject(obj) {
-    let ObjectClass = Object;
+    let ObjectClass = AbstractObject;
     if (obj.type === DrawObject.RECTANGLE) {
       ObjectClass = Rectangle;
     } else if (obj.type === DrawObject.TRIANGLE) {
@@ -383,8 +478,8 @@ let randColor = () => {
   return `rgb(${_.random(32, 255)}, ${_.random(32, 255)}, ${_.random(32, 255)})`;
 };
 
-const objects = new Array(800000);
-for (let i = 0; i !== 800000; ++i) {
+const objects = new Array(500000);
+for (let i = 0; i !== 500000; ++i) {
   switch (_.random(0, 2)) {
     case 0: {
       objects[i] = {
@@ -415,7 +510,6 @@ for (let i = 0; i !== 800000; ++i) {
           _.range(_.random(0, 10) > 9),
           () => _.random(0, 99999),
         ),
-        label: _.random(0, 10) > 9 ? 'Label' : '',
       };
     } break;
     case 2: {
@@ -429,6 +523,7 @@ for (let i = 0; i !== 800000; ++i) {
           _.range(_.random(0, 10) > 9),
           () => _.random(0, 99999),
         ),
+        label: _.random(0, 100) > 99 ? 'Label' : '',
       };
     } break;
   }

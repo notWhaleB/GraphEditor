@@ -5,7 +5,7 @@ class Camera {
     this.canvas = canvas;
     this.x = 0;
     this.y = 0;
-    this.scale = 2.0;
+    this.scale = 1.7;
     this.visibleChunks = new Map();
   }
 

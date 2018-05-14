@@ -7,6 +7,11 @@ const DrawObject = {
 };
 
 const ToolMode = {
+  SELECTOR: 0,
+  VIEWER: 1,
+};
+
+const Action = {
   VIEW: 0,
   MOVE: 1,
 };
@@ -32,6 +37,7 @@ const TEXT_LINE_HEIGHT = 36;
 
 window.DrawObject = DrawObject;
 window.ToolMode = ToolMode;
+window.Action = Action;
 window.CHUNK_SZ = CHUNK_SZ;
 window.L1_BUF_SZ = L1_BUF_SZ;
 window.L2_BUF_SZ = L2_BUF_SZ;

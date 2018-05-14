@@ -280,9 +280,28 @@ class Render {
     return this._getCached(CacheLabels.FullBuffer(), refresh);
   }
 
+  drawFrame(ctx, x0, y0, x1, y1) {
+    const draw = () => {
+      this.ctx.beginPath();
+      this.ctx.moveTo(x0, y0);
+      this.ctx.lineTo(x0, y1);
+      this.ctx.lineTo(x1, y1);
+      this.ctx.lineTo(x1, y0);
+      this.ctx.lineTo(x0, y0);
+      this.ctx.stroke();
+    };
+
+    this.ctx.strokeStyle = 'white';
+    draw();
+    this.ctx.strokeStyle = 'black';
+    this.ctx.setLineDash([1, 1]);
+    draw();
+    this.ctx.setLineDash([]);
+  }
+
   renderScene() {
     const bufInfo = this.getBufferInfo();
-    this.ctx.fillStyle = 'rgb(251, 251, 255)';
+    this.ctx.fillStyle = 'rgb(245, 245, 255)';
     this.ctx.fillRect(0, 0, this.scene.canvas.width, this.scene.canvas.height);
 
     this.ctx.scale(
@@ -302,30 +321,43 @@ class Render {
       this.scene.camera.x + bufInfo.x0,
       this.scene.camera.y + bufInfo.y0,
     );
+
+    if (
+      this.scene.moveState.moving
+      && this.scene.toolMode === ToolMode.SELECTOR
+      && this.scene.moveState.mode === Action.VIEW
+    ) {
+      this.drawFrame(
+        this.ctx,
+        this.scene.moveState.startX,
+        this.scene.moveState.startY,
+        this.scene.moveState.lastX,
+        this.scene.moveState.lastY,
+      );
+    }
+
     this.ctx.translate(
       this.scene.camera.x,
       this.scene.camera.y,
     );
-    if (this.scene.hoveredObjectIdx > 0) {
-      const bounds = this.scene.objects[this.scene.hoveredObjectIdx].getBounds();
 
-      const drawFrame = () => {
-        this.ctx.beginPath();
-        this.ctx.moveTo(bounds.x0, bounds.y0);
-        this.ctx.lineTo(bounds.x0, bounds.y1);
-        this.ctx.lineTo(bounds.x1, bounds.y1);
-        this.ctx.lineTo(bounds.x1, bounds.y0);
-        this.ctx.lineTo(bounds.x0, bounds.y0);
-        this.ctx.stroke();
-      };
+    _.forEach(
+      _.concat(
+        Array.from(this.scene.selectedObjects),
+        [this.scene.hoveredObjectIdx],
+      ),
+      (objIdx) => {
+        if (objIdx > 0) {
+          const bounds = this.scene.objects[objIdx].getBounds();
 
-      this.ctx.strokeStyle = 'white';
-      drawFrame();
-      this.ctx.strokeStyle = 'black';
-      this.ctx.setLineDash([1, 1]);
-      drawFrame();
-      this.ctx.setLineDash([]);
-    }
+          this.drawFrame(
+            this.ctx,
+            bounds.x0, bounds.y0,
+            bounds.x1, bounds.y1,
+          );
+        }
+      },
+    );
 
     const objects = this._getCached(
       CacheLabels.VisibleObjects(),

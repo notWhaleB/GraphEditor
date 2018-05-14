@@ -3,11 +3,76 @@
 <head>
   <meta charset="UTF-8">
   <title>Title</title>
+
+  <style>
+    :root {
+      --blue: #6495ed;
+    }
+
+    html, body {
+      padding: 0;
+      margin: 0;
+      max-height: 100vh;
+      overflow: hidden;
+    }
+
+    .btn {
+      background-color: white;
+      padding: 5px;
+      text-align: center;
+      line-height: 14px;
+      border: 1px solid black;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .btn:hover, .btn.active {
+      color: white;
+      background-color: var(--blue);
+    }
+  </style>
+  <script defer src="fontawesome-all.min.js"></script>
 </head>
 <body>
-  <!--<button id="btn-view">View</button>-->
-  <!--<button id="btn-move">Move</button>-->
-  <canvas id="canvas" width="1280" height="720"></canvas>
+  <div style="height: 32px; background-color: #f7faff; border-bottom: 1px solid grey"></div>
+  <div style="height: calc(100vh - 52px)">
+    <div style="background-color: black; display: flex; flex-direction: row; height: 100%; width: 100%">
+      <div style="width: 43px; height: 100%; border-right: 1px solid grey; background-color: #f7faff">
+        <div style="padding: 5px;">
+          <div id="btn-selector" class="btn">
+            <i class="fas fa-mouse-pointer"></i>
+          </div>
+          <div id="btn-viewer" class="btn active">
+            <i class="fas fa-arrows-alt"></i>
+          </div>
+          <hr>
+          <div class="btn">
+            <i class="far fa-square"></i>
+          </div>
+          <div class="btn" style="padding: 7px 5px 3px 5px">
+            <span style="font-size: 18px; line-height: 18px;">△</span>
+          </div>
+          <div class="btn">
+            <i class="far fa-circle"></i>
+          </div>
+          <hr>
+          <div class="btn">
+            <i class="far fa-clone"></i>
+          </div>
+        </div>
+      </div>
+      <div style="padding: 0; margin: 0; flex: auto">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div style="width: 250px; height: 100%; border-left: 1px solid grey; background-color: #f7faff">
+        <div style="padding: 5px;">
+          <div class="btn">Test</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="height: 20px; background-color: var(--blue)"></div>
+
 
   <script src="lodash.js" type="text/javascript"></script>
 

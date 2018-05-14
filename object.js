@@ -1,6 +1,6 @@
 'use strict';
 
-class Object {
+class AbstractObject {
   constructor(
     type, color, meta, label,
     params, childrenIdx, idx,
@@ -102,7 +102,7 @@ class Object {
 }
 
 
-class Rectangle extends Object {
+class Rectangle extends AbstractObject {
   getBounds() {
     const [x0, y0, w, h] = this.params;
     const x1 = x0 + w;
@@ -147,7 +147,7 @@ class Rectangle extends Object {
   }
 }
 
-class Triangle extends Object {
+class Triangle extends AbstractObject {
   getBounds() {
     let [x0, y0, x1, y1] = _.slice(this.params, 0, 4);
 
@@ -199,7 +199,7 @@ class Triangle extends Object {
   }
 }
 
-class Circle extends Object {
+class Circle extends AbstractObject {
   getBounds() {
     let [cx, cy, r] = this.params;
 
@@ -235,7 +235,7 @@ class Circle extends Object {
   }
 }
 
-window.Object = Object;
+window.AbstractObject = AbstractObject;
 window.Rectangle = Rectangle;
 window.Triangle = Triangle;
 window.Circle = Circle;
