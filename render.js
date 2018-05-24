@@ -135,11 +135,6 @@ class Render {
         this.renderObject(ctx, obj);
       });
 
-      //console.log(Array.from(this.scene.camera.visibleChunks.keys()), bitMask);
-      //console.log(count);
-
-      // window.open(buf.toDataURL('image/png'));
-
       return buf;
     };
 
@@ -229,20 +224,6 @@ class Render {
       this.drawObjectConnections(ctx, obj);
     }
   }
-
-  // getConnectionsBuffer(movingObjId=-1) {
-  //   const refresh = () => {
-  //     const bufInfo = this.getBufferInfo();
-  //     const buf = Render.createBuffer(bufInfo.width, bufInfo.height);
-  //     const ctx = buf.getContext('2d');
-  //
-  //     this.drawConnections(ctx, movingObjId);
-  //
-  //     return buf;
-  //   };
-  //
-  //   return this._getCached(CacheLabels.ConnectionsBuffer(), refresh);
-  // }
 
   redrawL1Buffers() {
     const lastBlockPos = (
@@ -374,18 +355,18 @@ class Render {
     _.forEach(objects, obj => {
       if (!obj.label) return;
 
-      this.ctx.font = `${TEXT_LINE_HEIGHT}px sans-serif`;
+      this.ctx.font = `${TEXT_LINE_HEIGHT}px Arial Black, sans-serif`;
       const textWidth = this.ctx.measureText(obj.label).width;
       const center = obj.getCenter();
       const [text, cx, cy] = [
         obj.label,
         center.x * this.scene.camera.scale - textWidth / 2,
-        center.y * this.scene.camera.scale,
+        center.y * this.scene.camera.scale + 10,
       ];
 
-      this.ctx.fillStyle = 'rgb(255, 255, 255)';
+      this.ctx.fillStyle = 'white';
       this.ctx.fillText(text, cx, cy);
-      this.ctx.fillStyle = 'rgb(0, 0, 0)';
+      this.ctx.strokeStyle = 'black';
       this.ctx.lineWidth = 2;
       this.ctx.strokeText(text, cx, cy);
       this.ctx.lineWidth = 1;

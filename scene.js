@@ -45,6 +45,12 @@ class Scene {
 
     this.toolMode = ToolMode.VIEWER;
 
+    const btnSelector = document.getElementById('btn-selector');
+    const btnViewer = document.getElementById('btn-viewer');
+    const labelInput = document.getElementById('label-input');
+    const labelClear = document.getElementById('label-clear');
+    const selectedCountElem = document.getElementById('selected-count');
+
     const markObjectForUpdate = (objIdx) => {
       _.forEach(
         this.objects[objIdx].extractChunks(),
@@ -128,6 +134,13 @@ class Scene {
         }
       } else if (this.moveState.objId) {
         this.selectedObjects.add(this.moveState.objId);
+      }
+
+      selectedCountElem.innerHTML = `${this.selectedObjects.size} object(s) selected`;
+      if (this.selectedObjects.size === 1) {
+        labelInput.value = this.objects[
+          Array.from(this.selectedObjects.values())[0]
+        ].label || '';
       }
 
       this.render.renderScene();
@@ -254,8 +267,7 @@ class Scene {
       this.render.renderScene();
     });
 
-    const btnSelector = document.getElementById('btn-selector');
-    const btnViewer = document.getElementById('btn-viewer');
+    const self = this;
 
     btnSelector
       .addEventListener('click', () => {
@@ -269,7 +281,36 @@ class Scene {
         this.toolMode = ToolMode.VIEWER;
         btnViewer.className = 'btn active';
         btnSelector.className = 'btn';
-      })
+      });
+
+    const labelChange = (value) => {
+      _.forEach(Array.from(this.selectedObjects), objIdx => {
+        this.objects[objIdx].label = value;
+      });
+      this.render.renderScene();
+    };
+
+    labelInput
+      .addEventListener('keyup', function () {
+        labelChange(this.value);
+      });
+
+    labelClear
+      .addEventListener('click', () => {
+        labelInput.value = '';
+        labelChange(labelInput.value);
+      });
+
+    _.forEach(Array.from(document.getElementsByClassName('color-pick')), elem => {
+      elem.addEventListener('click', function () {
+        const color = this.children[0].style.backgroundColor;
+        _.forEach(Array.from(self.selectedObjects), objIdx => {
+          self.objects[objIdx].color = color;
+          markObjectForUpdate(objIdx);
+        });
+        self.render.renderScene();
+      });
+    });
   }
 
   static findChunk(xIdx, yIdx) {
@@ -478,25 +519,25 @@ let randColor = () => {
   return `rgb(${_.random(32, 255)}, ${_.random(32, 255)}, ${_.random(32, 255)})`;
 };
 
-const objects = new Array(500000);
-for (let i = 0; i !== 500000; ++i) {
+const objects = new Array(200000);
+for (let i = 0; i !== 200000; ++i) {
   switch (_.random(0, 2)) {
     case 0: {
       objects[i] = {
         type: DrawObject.RECTANGLE,
         color: randColor(),
         params: [
-          _.random(5, 20000), _.random(5, 20000),
-          _.random(5, 25), _.random(5, 25),
+          _.random(5, 10000), _.random(5, 10000),
+          _.random(10, 50), _.random(10, 50),
         ],
         children: _.map(
           _.range(_.random(0, 10) > 9),
-          () => _.random(0, 99999),
+          () => _.random(0, 9999),
         ),
       };
     } break;
     case 1: {
-      const [sx, sy] = [_.random(5, 20000), _.random(5, 20000)];
+      const [sx, sy] = [_.random(20, 10000), _.random(20, 10000)];
 
       objects[i] = {
         type: DrawObject.TRIANGLE,
@@ -508,7 +549,7 @@ for (let i = 0; i !== 500000; ++i) {
         ],
         children: _.map(
           _.range(_.random(0, 10) > 9),
-          () => _.random(0, 99999),
+          () => _.random(0, 9999),
         ),
       };
     } break;
@@ -518,10 +559,10 @@ for (let i = 0; i !== 500000; ++i) {
       objects[i] = {
         type: DrawObject.CIRCLE,
         color: randColor(),
-        params: [_.random(5, 20000), _.random(5, 20000), _.random(5, 15)],
+        params: [_.random(20, 10000), _.random(20, 10000), _.random(10, 30)],
         children: _.map(
           _.range(_.random(0, 10) > 9),
-          () => _.random(0, 99999),
+          () => _.random(0, 9999),
         ),
         label: _.random(0, 100) > 99 ? 'Label' : '',
       };

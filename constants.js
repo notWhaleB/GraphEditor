@@ -33,7 +33,7 @@ if (L1_BUF_SZ % L2_BUF_SZ !== 0) {
   throw new Error('L1 cache size is not divisible by L2 cache size.');
 }
 
-const TEXT_LINE_HEIGHT = 36;
+const TEXT_LINE_HEIGHT = 32;
 
 window.DrawObject = DrawObject;
 window.ToolMode = ToolMode;
