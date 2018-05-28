@@ -17,7 +17,7 @@ class Scene {
     this.objects = [];
     this.grid = [];
 
-    this.hoveredObjectIdx = 0;
+    this.hoveredObjectIdx = -1;
     this.selectedObjects = new Set();
 
     // this.addObject(bgObject);
@@ -36,7 +36,7 @@ class Scene {
       mode: Action.VIEW,
       lastVisibleChunks: new Set(),
       moving: false,
-      objId: undefined,
+      objId: -1,
       lastX: undefined,
       lastY: undefined,
       startX: undefined,
@@ -50,6 +50,16 @@ class Scene {
     const labelInput = document.getElementById('label-input');
     const labelClear = document.getElementById('label-clear');
     const selectedCountElem = document.getElementById('selected-count');
+
+    const btnSquare = document.getElementById('btn-square');
+    const btnTriangle = document.getElementById('btn-triangle');
+    const btnCircle = document.getElementById('btn-circle');
+    const btnLink = document.getElementById('btn-link');
+    const btnUnlink = document.getElementById('btn-unlink');
+
+    const menuSave = document.getElementById('m-save');
+    const menuLoad = document.getElementById('m-load');
+    const menuNew = document.getElementById('m-new');
 
     const markObjectForUpdate = (objIdx) => {
       _.forEach(
@@ -84,7 +94,7 @@ class Scene {
         clickY - this.camera.y,
       );
 
-      if (clickedObjId > 0) {
+      if (clickedObjId !== -1) {
         if (!ev.metaKey) {
           this.selectedObjects.clear();
         }
@@ -128,11 +138,13 @@ class Scene {
               ),
             ),
             (objIdx) => {
+              if (objIdx === -1 || objIdx === undefined) return;
+
               this.selectedObjects.add(objIdx);
             }
           );
         }
-      } else if (this.moveState.objId) {
+      } else if (this.moveState.objId !== -1 && this.moveState.objId !== undefined) {
         this.selectedObjects.add(this.moveState.objId);
       }
 
@@ -209,7 +221,7 @@ class Scene {
           mouseY - this.camera.y,
         );
 
-        if (newHoveredObjectIdx > 0) {
+        if (newHoveredObjectIdx !== -1) {
           this.canvas.style.cursor = 'grab';
         } else {
           this.canvas.style.cursor = (this.toolMode === ToolMode.VIEWER)
@@ -235,7 +247,7 @@ class Scene {
             ),
           )),
           (objIdx) => {
-            if (objIdx <= 0) return;
+            if (objIdx === undefined || objIdx === -1) return;
 
             const obj = this.objects[objIdx];
             obj.moveDelta(
@@ -311,6 +323,167 @@ class Scene {
         self.render.renderScene();
       });
     });
+
+    menuSave
+      .addEventListener('click', () => {
+        const saved = this.objects
+          .map(obj => ({
+            type: obj.type,
+            color: obj.color,
+            params: obj.params,
+            children: obj.outgoing.map(obj => obj.idx),
+            label: obj.label,
+            meta: obj.meta,
+          }));
+
+        const blob = new Blob(
+          [JSON.stringify(saved)],
+          { type: 'text/json' },
+        );
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = (new Date()).toISOString() + '.json';
+        document.body.appendChild(link);
+        link.click();
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        }, 0);
+      });
+
+    menuLoad
+      .addEventListener('change', function () {
+        const file = this.files[0];
+        const reader = new FileReader();
+
+        if (!confirm("Are you sure? All unsaved changes will be lost.")) {
+          return;
+        }
+
+        reader.onload = function (ev) {
+          self.objects = [];
+          _.forEach(
+            JSON.parse(ev.target.result),
+            obj => {
+              self.addObject(obj);
+            },
+          );
+          self.initConnections();
+          self.render.lru._clear();
+          self.camera.scale = 1.7;
+          self.camera.set(0, 0);
+          self.render.renderScene();
+          self.build2DIndex();
+        };
+
+        reader.readAsText(file);
+      });
+
+    menuNew
+      .addEventListener('click', () => {
+        if (!confirm("Are you sure? All unsaved changes will be lost.")) {
+          return;
+        }
+
+        this.objects = [];
+        this.render.lru._clear();
+        this.camera.scale = 1.7;
+        this.camera.set(0, 0);
+        this.render.renderScene();
+        this.build2DIndex();
+      });
+
+    btnSquare
+      .addEventListener('click', () => {
+        this.addObject({
+          type: DrawObject.RECTANGLE,
+          color: 'white',
+          params: [
+            -this.camera.x + 10, -this.camera.y + 10,
+            30, 30,
+          ],
+        });
+        markObjectForUpdate(this.objects.length - 1);
+        this.render.lru.invalidate(CacheLabels.VisibleObjects());
+        this.build2DIndex();
+        this.render.renderScene();
+      });
+
+    btnTriangle
+      .addEventListener('click', () => {
+        const [sx, sy] = [-this.camera.x + 10, -this.camera.y + 30];
+
+        this.addObject({
+          type: DrawObject.TRIANGLE,
+          color: 'white',
+          params: [
+            sx, sy,
+            sx + 15, sy - 27,
+            sx + 30, sy,
+          ],
+        });
+        markObjectForUpdate(this.objects.length - 1);
+        this.render.lru.invalidate(CacheLabels.VisibleObjects());
+        this.build2DIndex();
+        this.render.renderScene();
+      });
+
+    btnCircle
+      .addEventListener('click', () => {
+        this.addObject({
+          type: DrawObject.CIRCLE,
+          color: 'white',
+          params: [
+            -this.camera.x + 20, -this.camera.y + 20,
+            15,
+          ],
+        });
+        markObjectForUpdate(this.objects.length - 1);
+        this.render.lru.invalidate(CacheLabels.VisibleObjects());
+        this.build2DIndex();
+        this.render.renderScene();
+      });
+
+    btnLink
+      .addEventListener('click', () => {
+        const objects = Array.from(this.selectedObjects);
+        _.forEach(objects, objIdx => {
+          _.forEach(objects, objIdx_ => {
+            if (objIdx_ === objIdx) return;
+            if (objIdx < objIdx_) {
+              this.objects[objIdx].outgoing.push(this.objects[objIdx_]);
+              this.objects[objIdx_].incoming.push(this.objects[objIdx]);
+            } else {
+              this.objects[objIdx_].outgoing.push(this.objects[objIdx]);
+              this.objects[objIdx].incoming.push(this.objects[objIdx_]);
+            }
+          });
+        });
+
+        this.render.renderScene();
+      });
+
+    btnUnlink
+      .addEventListener('click', () => {
+        _.forEach(
+          Array.from(this.selectedObjects),
+          objIdx => {
+            this.objects[objIdx].incoming = _.filter(
+              this.objects[objIdx].incoming,
+              obj => !this.selectedObjects.has(obj.idx),
+            );
+            this.objects[objIdx].outgoing = _.filter(
+              this.objects[objIdx].outgoing,
+              obj => !this.selectedObjects.has(obj.idx),
+            );
+          },
+        );
+
+        this.render.renderScene();
+      });
   }
 
   static findChunk(xIdx, yIdx) {
@@ -350,7 +523,10 @@ class Scene {
     const xIdx = _.sortedLastIndex(this.ticksX, x) - 1;
     const yIdx = _.sortedLastIndex(this.ticksY, y) - 1;
 
-    if (!this.grid[xIdx] || !this.grid[xIdx][yIdx]) {
+    if (
+      !this.grid[xIdx] || this.grid[xIdx][yIdx] === -1
+      || this.grid[xIdx][yIdx] === undefined
+    ) {
       return -1;
     }
 
@@ -414,7 +590,7 @@ class Scene {
 
     this.grid = new Array(this.ticksX.length);
     for (let i = 0; i !== this.ticksX.length; ++i) {
-      this.grid[i] = new Array(this.ticksY.length).fill(0);
+      this.grid[i] = new Array(this.ticksY.length).fill(-1);
     }
 
     _.forEach(
@@ -479,36 +655,6 @@ class Scene {
       delete obj.childrenIdx;
     });
   }
-
-  // renderBuffer(checkComposite) {
-  //   if (this.compositeBuffers.length) {
-  //     let curIdx = 0;
-  //     let curCompositeIdx = 0;
-  //
-  //     while (curIdx < this.objects.length && curCompositeIdx !== this.compositeBuffers.length) {
-  //       const [fromIdx, toIdx, buffer] = this.compositeBuffers[curCompositeIdx];
-  //
-  //       if (curIdx < fromIdx) {
-  //         this.bufferRenderer.renderScene(this.objects, curIdx, fromIdx);
-  //         curIdx = fromIdx;
-  //       } else {
-  //         this.bufferCtx.drawImage(buffer, 0, 0);
-  //         curIdx = toIdx;
-  //         curCompositeIdx += 1;
-  //       }
-  //     }
-  //
-  //     if (curIdx < this.objects.length) {
-  //       this.bufferRenderer.renderScene(this.objects, curIdx, this.objects.length);
-  //     }
-  //
-  //     return;
-  //   }
-  //
-  //   if (checkComposite) return;
-  //
-  //   this.bufferRenderer.renderScene(this.objects);
-  // }
 }
 
 // - // - // - // - // - //
@@ -519,56 +665,56 @@ let randColor = () => {
   return `rgb(${_.random(32, 255)}, ${_.random(32, 255)}, ${_.random(32, 255)})`;
 };
 
-const objects = new Array(200000);
-for (let i = 0; i !== 200000; ++i) {
-  switch (_.random(0, 2)) {
-    case 0: {
-      objects[i] = {
-        type: DrawObject.RECTANGLE,
-        color: randColor(),
-        params: [
-          _.random(5, 10000), _.random(5, 10000),
-          _.random(10, 50), _.random(10, 50),
-        ],
-        children: _.map(
-          _.range(_.random(0, 10) > 9),
-          () => _.random(0, 9999),
-        ),
-      };
-    } break;
-    case 1: {
-      const [sx, sy] = [_.random(20, 10000), _.random(20, 10000)];
-
-      objects[i] = {
-        type: DrawObject.TRIANGLE,
-        color: randColor(),
-        params: [
-          sx, sy,
-          sx + 10, sy - 18,
-          sx + 20, sy,
-        ],
-        children: _.map(
-          _.range(_.random(0, 10) > 9),
-          () => _.random(0, 9999),
-        ),
-      };
-    } break;
-    case 2: {
-      const [cx, cy] = [];
-
-      objects[i] = {
-        type: DrawObject.CIRCLE,
-        color: randColor(),
-        params: [_.random(20, 10000), _.random(20, 10000), _.random(10, 30)],
-        children: _.map(
-          _.range(_.random(0, 10) > 9),
-          () => _.random(0, 9999),
-        ),
-        label: _.random(0, 100) > 99 ? 'Label' : '',
-      };
-    } break;
-  }
-}
+// const objects = new Array(10000);
+// for (let i = 0; i !== 10000; ++i) {
+//   switch (_.random(0, 2)) {
+//     case 0: {
+//       objects[i] = {
+//         type: DrawObject.RECTANGLE,
+//         color: randColor(),
+//         params: [
+//           _.random(5, 10000), _.random(5, 10000),
+//           _.random(10, 50), _.random(10, 50),
+//         ],
+//         children: _.map(
+//           _.range(_.random(0, 10) > 9),
+//           () => _.random(0, 9999),
+//         ),
+//       };
+//     } break;
+//     case 1: {
+//       const [sx, sy] = [_.random(20, 10000), _.random(20, 10000)];
+//
+//       objects[i] = {
+//         type: DrawObject.TRIANGLE,
+//         color: randColor(),
+//         params: [
+//           sx, sy,
+//           sx + 10, sy - 18,
+//           sx + 20, sy,
+//         ],
+//         children: _.map(
+//           _.range(_.random(0, 10) > 9),
+//           () => _.random(0, 9999),
+//         ),
+//       };
+//     } break;
+//     case 2: {
+//       const [cx, cy] = [];
+//
+//       objects[i] = {
+//         type: DrawObject.CIRCLE,
+//         color: randColor(),
+//         params: [_.random(20, 10000), _.random(20, 10000), _.random(10, 30)],
+//         children: _.map(
+//           _.range(_.random(0, 10) > 9),
+//           () => _.random(0, 9999),
+//         ),
+//         label: _.random(0, 100) > 99 ? 'Label' : '',
+//       };
+//     } break;
+//   }
+// }
 // for (let i = 100000; i !== 100100; ++i) {
 //   objects[i] = {
 //     type: DrawObject.RECTANGLE,
@@ -584,49 +730,14 @@ for (let i = 0; i !== 200000; ++i) {
 //   };
 // }
 
-// const objects = [];
-// for (let i = 256; i < 5000; i += 512) {
-//   for (let j = 256; j < 5000; j += 512) {
-//     objects.push({
-//       type: DrawObject.RECTANGLE,
-//       color: randColor(),
-//       params: [
-//         i, j,
-//         _.random(30, 80), _.random(30, 80),
-//       ],
-//     });
-//   }
-// }
-
-// const objects = [
-//   {
-//     type: DrawObject.RECTANGLE,
-//     color: 'green',
-//     params: [50, 50, 100, 100],
-//     zIndex: 2,
-//   }
-//   {
-//     type: DrawObject.RECTANGLE,
-//     color: 'blue',
-//     params: [90, 90, 100, 100],
-//     zIndex: 1,
-//   },
-// ];
-
-_.forEach(objects, obj => {
-  scene.addObject(obj);
-});
-scene.initConnections();
+// _.forEach(objects, obj => {
+//   scene.addObject(obj);
+// });
+// scene.initConnections();
 
 scene.camera.set(0, 0);
 
 setTimeout(() => {
   scene.render.renderScene();
   scene.build2DIndex();
-  // console.log(scene.ticksX);
-  //console.log(scene.render.lru._map.size);
 }, 0);
-
-// setInterval(() => {
-//   console.log(scene.render.lru._map.size);
-// }, 1000);

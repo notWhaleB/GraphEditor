@@ -328,7 +328,7 @@ class Render {
         [this.scene.hoveredObjectIdx],
       ),
       (objIdx) => {
-        if (objIdx > 0) {
+        if (objIdx >= 0) {
           const bounds = this.scene.objects[objIdx].getBounds();
 
           this.drawFrame(

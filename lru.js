@@ -89,6 +89,13 @@ class LRUCache extends LinkedList {
     }
   };
 
+  _clear() {
+    _.forEach(
+      Array.from(this._map.keys()),
+      key => this.invalidate(key),
+    );
+  }
+
   get(key) {
     const elem = this._map.get(key);
 
