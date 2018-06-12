@@ -8,20 +8,11 @@ class Scene {
 
     this.camera = new Camera(this.canvas);
 
-    // const bgObject = {
-    //   type: DrawObject.RECTANGLE,
-    //   color: 'rgb(230, 240, 255)',
-    //   params: [0, 0, this.canvas.width, this.canvas.height],
-    // };
-
     this.objects = [];
     this.grid = [];
 
     this.hoveredObjectIdx = -1;
     this.selectedObjects = new Set();
-
-    // this.addObject(bgObject);
-    // this.build2DIndex();
 
     this.render = new Render(this);
 
@@ -49,7 +40,6 @@ class Scene {
     const btnViewer = document.getElementById('btn-viewer');
     const labelInput = document.getElementById('label-input');
     const labelClear = document.getElementById('label-clear');
-    const selectedCountElem = document.getElementById('selected-count');
 
     const btnSquare = document.getElementById('btn-square');
     const btnTriangle = document.getElementById('btn-triangle');
@@ -60,6 +50,21 @@ class Scene {
     const menuSave = document.getElementById('m-save');
     const menuLoad = document.getElementById('m-load');
     const menuNew = document.getElementById('m-new');
+    const menuRandom = document.getElementById('m-random');
+
+    const statusTool = document.getElementById('status-tool');
+    const statusObjects = document.getElementById('status-objects');
+    const statusCoords = document.getElementById('status-coords');
+    const statusScale = document.getElementById('status-scale');
+
+    this.updateObjectsStatus = () => {
+      statusObjects.innerHTML = `Objects: ${this.objects.length} ${
+        this.selectedObjects.size !== 0 
+          ? `(${this.selectedObjects.size} selected)` 
+          : ''
+      }`;
+    };
+
 
     const markObjectForUpdate = (objIdx) => {
       _.forEach(
@@ -95,7 +100,7 @@ class Scene {
       );
 
       if (clickedObjId !== -1) {
-        if (!ev.metaKey) {
+        if (!ev.metaKey && !this.selectedObjects.has(clickedObjId)) {
           this.selectedObjects.clear();
         }
 
@@ -148,7 +153,7 @@ class Scene {
         this.selectedObjects.add(this.moveState.objId);
       }
 
-      selectedCountElem.innerHTML = `${this.selectedObjects.size} object(s) selected`;
+      this.updateObjectsStatus();
       if (this.selectedObjects.size === 1) {
         labelInput.value = this.objects[
           Array.from(this.selectedObjects.values())[0]
@@ -183,7 +188,8 @@ class Scene {
 
       const delta = 0 - ev.deltaY * acc;
 
-      if (this.camera.scale + delta < 0.5) return;
+      if (this.camera.scale + delta < 0.25) return;
+      if (this.camera.scale + delta > 10) return;
 
       const newCamX = this.camera.x - (
         1 / this.camera.scale - 1 / (this.camera.scale + delta)
@@ -206,6 +212,7 @@ class Scene {
     this.canvas.addEventListener('wheel', ev => {
       wheelHandler(0.00005, ev);
       _.debounce(wheelHandler, 70)(0.01, ev);
+      statusScale.innerHTML = `Scale: ${_.round(this.camera.scale, 2).toFixed(2)}`;
     });
 
     this.canvas.addEventListener('mousemove', ev => {
@@ -213,6 +220,12 @@ class Scene {
 
       const mouseX = mouse.x / this.camera.scale;
       const mouseY = mouse.y / this.camera.scale;
+
+      statusCoords.innerHTML = `X: ${
+        _.round(mouseX - this.camera.x)
+      }, Y: ${
+        _.round(mouseY - this.camera.y)
+      }`;
 
       if (!this.moveState.moving) {
 
@@ -286,6 +299,7 @@ class Scene {
         this.toolMode = ToolMode.SELECTOR;
         btnSelector.className = 'btn active';
         btnViewer.className = 'btn';
+        statusTool.innerHTML = 'SELECT';
       });
 
     btnViewer
@@ -293,6 +307,7 @@ class Scene {
         this.toolMode = ToolMode.VIEWER;
         btnViewer.className = 'btn active';
         btnSelector.className = 'btn';
+        statusTool.innerHTML = 'VIEW';
       });
 
     const labelChange = (value) => {
@@ -389,6 +404,25 @@ class Scene {
         }
 
         this.objects = [];
+        this.render.lru._clear();
+        this.camera.scale = 1.7;
+        this.camera.set(0, 0);
+        this.render.renderScene();
+        this.build2DIndex();
+      });
+
+    menuRandom
+      .addEventListener('click', () => {
+        if (!confirm("Are you sure? All unsaved changes will be lost.")) {
+          return;
+        }
+
+        this.objects = [];
+        _.forEach(
+          randomObjects(),
+          obj => this.addObject(obj),
+        );
+
         this.render.lru._clear();
         this.camera.scale = 1.7;
         this.camera.set(0, 0);
@@ -534,38 +568,28 @@ class Scene {
   }
 
   getSelectedObjects(x0, y0, x1, y1) {
-    const xIdx0 = _.sortedLastIndex(this.ticksX, x0) - 1;
-    const yIdx0 = _.sortedLastIndex(this.ticksY, y0) - 1;
-    const xIdx1 = _.sortedLastIndex(this.ticksY, x1) - 1;
-    const yIdx1 = _.sortedLastIndex(this.ticksY, y1) - 1;
+    const objects = this.render._getCached(
+      CacheLabels.VisibleObjects(),
+      () => {
+        return this.render.getVisibleObjects(0, this.objects.length, false);
+      },
+    );
 
-    const objects = new Set();
-
-    if (!this.grid[xIdx0] || !this.grid[xIdx1]) {
-      return objects;
-    }
-
-    for (let xIdx = xIdx0; xIdx <= xIdx1; ++xIdx) {
-      for (let yIdx = yIdx0; yIdx <= yIdx1; ++yIdx) {
-        objects.add(this.grid[xIdx][yIdx]);
-      }
-    }
-
-    return objects;
+    return _.map(
+      _.filter(objects, obj => {
+        const coords = obj.getBounds();
+        if (x0 > coords.x0 || coords.x0 > x1) return false;
+        if (x0 > coords.x1 || coords.x1 > x1) return false;
+        if (y0 > coords.y0 || coords.y0 > y1) return false;
+        return !(y0 > coords.y1 || coords.y1 > y1)
+      }),
+      obj => obj.idx,
+    );
   }
 
   build2DIndex() {
     this.ticksX = [];
     this.ticksY = [];
-
-    // let limitCoords = coords => {
-    //   return {
-    //     x0: _.max([0, coords.x0]),
-    //     x1: _.min([coords.x1, this.canvas.width]),
-    //     y0: _.max([0, coords.y0]),
-    //     y1: _.min([coords.y1, this.canvas.height]),
-    //   };
-    // };
 
     const objects = this.render._getCached(
       CacheLabels.VisibleObjects(),
@@ -637,6 +661,8 @@ class Scene {
 
     this.objects.push(obj_);
 
+    this.updateObjectsStatus();
+
     return obj_;
   }
 
@@ -660,80 +686,6 @@ class Scene {
 // - // - // - // - // - //
 
 const scene = new Scene('canvas');
-
-let randColor = () => {
-  return `rgb(${_.random(32, 255)}, ${_.random(32, 255)}, ${_.random(32, 255)})`;
-};
-
-// const objects = new Array(10000);
-// for (let i = 0; i !== 10000; ++i) {
-//   switch (_.random(0, 2)) {
-//     case 0: {
-//       objects[i] = {
-//         type: DrawObject.RECTANGLE,
-//         color: randColor(),
-//         params: [
-//           _.random(5, 10000), _.random(5, 10000),
-//           _.random(10, 50), _.random(10, 50),
-//         ],
-//         children: _.map(
-//           _.range(_.random(0, 10) > 9),
-//           () => _.random(0, 9999),
-//         ),
-//       };
-//     } break;
-//     case 1: {
-//       const [sx, sy] = [_.random(20, 10000), _.random(20, 10000)];
-//
-//       objects[i] = {
-//         type: DrawObject.TRIANGLE,
-//         color: randColor(),
-//         params: [
-//           sx, sy,
-//           sx + 10, sy - 18,
-//           sx + 20, sy,
-//         ],
-//         children: _.map(
-//           _.range(_.random(0, 10) > 9),
-//           () => _.random(0, 9999),
-//         ),
-//       };
-//     } break;
-//     case 2: {
-//       const [cx, cy] = [];
-//
-//       objects[i] = {
-//         type: DrawObject.CIRCLE,
-//         color: randColor(),
-//         params: [_.random(20, 10000), _.random(20, 10000), _.random(10, 30)],
-//         children: _.map(
-//           _.range(_.random(0, 10) > 9),
-//           () => _.random(0, 9999),
-//         ),
-//         label: _.random(0, 100) > 99 ? 'Label' : '',
-//       };
-//     } break;
-//   }
-// }
-// for (let i = 100000; i !== 100100; ++i) {
-//   objects[i] = {
-//     type: DrawObject.RECTANGLE,
-//     color: randColor(),
-//     params: [
-//       _.random(50, 10000), _.random(50, 10000),
-//       _.random(50, 100), _.random(50, 100),
-//     ],
-//     children: _.map(
-//       _.range(_.random(0, 1)),
-//       () => _.random(100000, 100100),
-//     ),
-//   };
-// }
-
-// _.forEach(objects, obj => {
-//   scene.addObject(obj);
-// });
-// scene.initConnections();
 
 scene.camera.set(0, 0);
 

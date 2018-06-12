@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Title</title>
+  <title>Graph Editor</title>
 
   <style>
     :root {
-      --blue: #6495ed;
+      --blue: #507eb3;
+      --panel-bg: #f7fcff;
     }
 
     html, body {
@@ -14,6 +15,7 @@
       margin: 0;
       max-height: 100vh;
       overflow: hidden;
+      font-family: "Helvetica Neue", Arial, sans-serif;
     }
 
     .btn {
@@ -57,17 +59,18 @@
   <script defer src="fontawesome-all.min.js"></script>
 </head>
 <body>
-  <div style="height: 32px; line-height: 32px; padding: 0 5px; background-color: #f7faff; border-bottom: 1px solid grey">
+  <div style="height: 32px; line-height: 32px; padding: 0 5px; background-color: var(--panel-bg); border-bottom: 1px solid grey">
     <span id="m-save" class="menu">Save</span>
     <label for="m-load" class="menu">Load</label>
     <input id="m-load" type='file' accept='text/json'>
     <span id="m-new" class="menu">New</span>
+    <span id="m-random" class="menu">Random</span>
     <span style="padding-right: 5px">|</span>
     <span id="m-help" class="menu">Help</span>
   </div>
-  <div style="height: calc(100vh - 52px)">
+  <div style="height: calc(100vh - 61px)">
     <div style="background-color: black; display: flex; flex-direction: row; height: 100%; width: 100%">
-      <div style="width: 43px; height: 100%; border-right: 1px solid grey; background-color: #f7faff">
+      <div style="width: 43px; height: 100%; border-right: 1px solid grey; background-color: var(--panel-bg)">
         <div style="padding: 5px;">
           <div id="btn-selector" class="btn">
             <i class="fas fa-mouse-pointer"></i>
@@ -97,10 +100,8 @@
       <div style="padding: 0; margin: 0; flex: auto">
         <canvas id="canvas"></canvas>
       </div>
-      <div style="width: 250px; height: 100%; border-left: 1px solid grey; background-color: #f7faff">
+      <div style="width: 250px; height: 100%; border-left: 1px solid grey; background-color: var(--panel-bg)">
         <div style="padding: 5px;">
-          <div id="selected-count" style="text-align: center">1 object(s) selected</div>
-          <hr>
           <div>Color:</div>
           <div class="btn color-pick">
             <div style="background-color: red"></div>
@@ -132,7 +133,12 @@
       </div>
     </div>
   </div>
-  <div style="height: 20px; background-color: var(--blue)"></div>
+  <div style="height: 29px; line-height: 29px; color: white; background-color: var(--blue); padding: 0 15px">
+    <div id="status-tool" style="float: left">VIEW</div>
+    <div id="status-scale" style="float: right;">Scale: 1.70</div>
+    <div id="status-coords" style="float: right; margin-right: 18px;">X: 0, Y: 0</div>
+    <div id="status-objects" style="float: right; margin-right: 18px;">Objects: 100000</div>
+  </div>
 
 
   <script src="lodash.js" type="text/javascript"></script>
@@ -141,6 +147,7 @@
 
   <script src="util.js" type="text/javascript"></script>
   <script src="lru.js" type="text/javascript"></script>
+  <script src="random.js" type="text/javascript"></script>
 
   <script src="object.js" type="text/javascript"></script>
   <script src="camera.js" type="text/javascript"></script>

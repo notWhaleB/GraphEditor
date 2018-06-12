@@ -272,12 +272,16 @@ class Render {
       this.ctx.stroke();
     };
 
-    this.ctx.strokeStyle = 'white';
+    const strokeWidth = _.min([_.max([1, _.round(3 / this.scene.camera.scale)]), 4]);
+
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = strokeWidth;
     draw();
-    this.ctx.strokeStyle = 'black';
-    this.ctx.setLineDash([1, 1]);
+    ctx.strokeStyle = 'black';
+    ctx.setLineDash([strokeWidth, strokeWidth]);
     draw();
-    this.ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
   }
 
   renderScene() {
