@@ -422,7 +422,7 @@ class Scene {
           randomObjects(),
           obj => this.addObject(obj),
         );
-
+        self.initConnections();
         this.render.lru._clear();
         this.camera.scale = 1.7;
         this.camera.set(0, 0);
